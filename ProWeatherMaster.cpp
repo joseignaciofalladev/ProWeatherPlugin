@@ -1,456 +1,633 @@
-// ProWeatherMaster.cpp
-#include "WeatherSystemMaster.h" // tu header existente
-#include "Components/SceneComponent.h"
-#include "UObject/ConstructorHelpers.h"
-#include "Engine/TextureCube.h"
-#include "Engine/Texture2D.h"
-#include "Materials/Material.h"
-#include "Materials/MaterialInstance.h"
-#include "Sound/SoundCue.h"
-#include "Kismet/GameplayStatics.h"
-#include "NiagaraSystem.h"
-#include "NiagaraComponent.h"
-#include "Engine/StaticMesh.h"
-#include "Materials/MaterialParameterCollection.h"
-#include "Components/AudioComponent.h"
-#include "Components/DirectionalLightComponent.h"
-#include "Components/SkyLightComponent.h"
-#include "Components/SkyAtmosphereComponent.h"
-#include "Components/ExponentialHeightFogComponent.h"
-#include "Components/PostProcessComponent.h"
-#include "Components/StaticMeshComponent.h"
-#include "Components/VolumetricCloudComponent.h"
-#include "Curves/CurveFloat.h"
-#include "TimerManager.h"
+// Copyright PixelForgeESP 2026. All rights reserved.
 
-// Constructor
-AWeatherSystemMaster::AWeatherSystemMaster()
+#include "ProWeatherMaster.h"
+#include "Math/UnrealMathUtility.h"
+#include "TimerManager.h"
+#include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
+
+AProWeatherMaster::AProWeatherMaster()
 {
 	PrimaryActorTick.bCanEverTick = true;
-
-	// Create root
-	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
-	SetRootComponent(RootComponent);
-
-	// Directional Light
-	DirectionalLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("DirectionalLight"));
-	if (DirectionalLight)
-	{
-		DirectionalLight->SetupAttachment(RootComponent);
-		DirectionalLight->SetMobility(EComponentMobility::Movable);
-		DirectionalLight->SetRelativeRotation(FRotator(233.0f, 0.0f, 0.0f));
-		DirectionalLight->bUseTemperature = true;
-		DirectionalLight->Temperature = 4500.0f;
-		DirectionalLight->bEnableLightShaftOcclusion = true;
-		DirectionalLight->OcclusionMaskDarkness = 1.0f;
-		DirectionalLight->bEnableLightShaftBloom = true;
-		DirectionalLight->BloomScale = 0.5f;
-		DirectionalLight->BloomMaxBrightness = 5.0f;
-		DirectionalLight->bUsedAsAtmosphereSunLight = true;
-		DirectionalLight->DynamicShadowDistanceMovableLight = 200000.0f;
-		DirectionalLight->DynamicShadowCascades = 5.0f;
-		DirectionalLight->CascadeDistributionExponent = 4.0f;
-		DirectionalLight->CascadeTransitionFraction = 0.3f;
-	}
-
-	// Sky Light
-	SkyLight = CreateDefaultSubobject<USkyLightComponent>(TEXT("SkyLight"));
-	if (SkyLight)
-	{
-		SkyLight->SetupAttachment(RootComponent);
-		SkyLight->SetMobility(EComponentMobility::Movable);
-		SkyLight->Intensity = SkyLightIntensityOfDay;
-		SkyLight->SourceType = SLS_SpecifiedCubemap;
-		CubemapTemp = nullptr; // se puede asignar en editor o por carga segura abajo
-	}
-
-	// Sky Atmosphere
-	SkyAtmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("SkyAtmosphere"));
-	if (SkyAtmosphere)
-	{
-		SkyAtmosphere->SetupAttachment(RootComponent);
-		SkyAtmosphere->SetMobility(EComponentMobility::Movable);
-		SkyAtmosphere->SetSkyLuminanceFactor(FVector(0.5f, 0.625f, 1.0f));
-	}
-
-	// Post Process
-	PostProcessComp = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcess"));
-	if (PostProcessComp)
-	{
-		PostProcessComp->SetupAttachment(RootComponent);
-		PostProcessComp->SetMobility(EComponentMobility::Movable);
-		PostProcessComp->bUnbound = true;
-		PostProcessComp->Settings.bOverride_BloomIntensity = true;
-		PostProcessComp->Settings.BloomIntensity = 0.0f;
-		PostProcessComp->Settings.bOverride_AutoExposureBias = true;
-		PostProcessComp->Settings.AutoExposureBias = 0.0f;
-		PostProcessComp->Settings.bOverride_VignetteIntensity = true;
-		PostProcessComp->Settings.VignetteIntensity = 0.5f;
-		PostProcessComp->Settings.bOverride_ColorGradingLUT = true;
-		PostProcessComp->Settings.bOverride_ColorGradingIntensity = true;
-		PostProcessComp->Settings.ColorGradingIntensity = 0.5f;
-		LUT = nullptr;
-	}
-
-	// Volumetric Cloud
-	VolumetricCloud = CreateDefaultSubobject<UVolumetricCloudComponent>(TEXT("VolumetricCloud"));
-	if (VolumetricCloud)
-	{
-		VolumetricCloud->SetupAttachment(RootComponent);
-		VolumetricCloud->SetMobility(EComponentMobility::Movable);
-		VolumetricCloud->LayerBottomAltitude = 20.0f;
-		VolumetricCloud->bUsePerSampleAtmosphericLightTransmittance = true;
-		CloudMaterial = nullptr;
-	}
-
-	// Exponential Height Fog
-	ExponentialHeightFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("ExponentialHeightFog"));
-	if (ExponentialHeightFog)
-	{
-		ExponentialHeightFog->SetupAttachment(RootComponent);
-		ExponentialHeightFog->SetMobility(EComponentMobility::Movable);
-		ExponentialHeightFog->SetRelativeLocation(FVector(0.0f, 0.0f, 5000.0f));
-	}
-
-	// Sky Sphere (static mesh)
-	SkySphere = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SkySphere"));
-	if (SkySphere)
-	{
-		SkySphere->SetupAttachment(RootComponent);
-		SkySphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		SkySphere->CastShadow = false;
-		SkySphereMesh = nullptr;
-		SkyMaterial = nullptr;
-	}
-
-	// Rain FX (Niagara)
-	RainFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("RainFX"));
-	if (RainFX)
-	{
-		RainFX->SetupAttachment(RootComponent);
-		RainFX->SetVisibility(true);
-		NS_RainFall = nullptr;
-	}
-
-	// Snow FX (Niagara)
-	SnowFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("SnowFX"));
-	if (SnowFX)
-	{
-		SnowFX->SetupAttachment(RootComponent);
-		SnowFX->SetVisibility(true);
-		NS_SnowFall = nullptr;
-	}
-
-	// Audio Components (create but keep volume 0 by default where appropriate)
-	RainAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("RainAudio"));
-	if (RainAudio) { RainAudio->SetupAttachment(RootComponent); RainAudio->bAutoActivate = false; RainAudio->VolumeMultiplier = 0.0f; RainSound = nullptr; }
-
-	ThunderAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("ThunderAudio"));
-	if (ThunderAudio) { ThunderAudio->SetupAttachment(RootComponent); ThunderAudio->bAutoActivate = false; ThunderAudio->VolumeMultiplier = 0.0f; ThunderSound = nullptr; }
-
-	SnowAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("SnowAudio"));
-	if (SnowAudio) { SnowAudio->SetupAttachment(RootComponent); SnowAudio->bAutoActivate = false; SnowAudio->VolumeMultiplier = 0.0f; SnowSound = nullptr; }
-
-	WindAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("WindAudio"));
-	if (WindAudio) { WindAudio->SetupAttachment(RootComponent); WindAudio->bAutoActivate = false; WindAudio->VolumeMultiplier = 0.0f; WindSound = nullptr; }
-
-	BirdsAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("BirdsAudio"));
-	if (BirdsAudio) { BirdsAudio->SetupAttachment(RootComponent); BirdsAudio->bAutoActivate = false; BirdsSound = nullptr; }
-
-	CicadaAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("CicadaAudio"));
-	if (CicadaAudio) { CicadaAudio->SetupAttachment(RootComponent); CicadaAudio->bAutoActivate = false; CicadaSound = nullptr; }
-
-	// Timelines
-	IsNightTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("IsNightTimeLine"));
-	SunTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SunTimeLine"));
-	SnowOrRainFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SnowOrRainFallingTimeLine"));
-	RainFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("RainFallingTimeLine"));
-	SnowFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SnowFallingTimeLine"));
-	GetWetTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("GetWetTimeLine"));
-	FrozenTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("FrozenTimeLine"));
-
-	// Curves remain nullptr by default; safe checks later
-	IsNightCurve = nullptr;
-	SunAngleCurve = nullptr;
-	SnowOrRainFallingCurve = nullptr;
-	RainFallingCurve = nullptr;
-	SnowFallingCurve = nullptr;
-	GetWetCurve = nullptr;
-	FrozenCurve = nullptr;
-
-	// MPC references (optional to set here)
-	MPC = nullptr;
-	MPC_Tree = nullptr;
-
-	// Default colors / values (can be overridden in editor)
-	SnowColorOfDay = FLinearColor(0.5f, 0.65f, 1.0f, 1.0f);
-	SnowColorOfNight = FLinearColor(0.25f, 0.325f, 0.5f, 1.0f);
-	DarkClouds = FLinearColor(0.035f, 0.0395f, 0.05f, 1.0f);
-
-	// Make sure defaults used in header are respected
-	SkyLightIntensityOfDay = 1.2f;
-	SkyLightIntensityOfNight = 10.0f;
-
-	// Call setup hook for any extra safe initialization
 	SetupDefaults();
 }
 
-// SetupDefaults(): cargado básico seguro de assets opcional (no obligatorio)
-void AWeatherSystemMaster::SetupDefaults()
-{
-	// Intentionally conservative: hacemos cargas "optional" con checks.
-	// Si quieres forzar assets, descomenta y ajusta las rutas con ConstructorHelpers.
-
-	// Ejemplo seguro de carga (descomentar si quieres):
-	// static ConstructorHelpers::FObjectFinder<UTextureCube> CubeFinder(TEXT("TextureCube'/WeatherSystem/HDRI/CubeMap.CubeMap'"));
-	// if (CubeFinder.Succeeded()) { CubemapTemp = CubeFinder.Object; if (SkyLight) SkyLight->Cubemap = CubemapTemp; }
-
-	// No forzamos llamadas que puedan fallar en tiempo de ejecución.
-	// Dejamos las propiedades listas para que el diseñador asigne assets desde el editor.
-
-	// Ajustes iniciales seguros
-	if (SkyLight)
-	{
-		SkyLight->Intensity = SkyLightIntensityOfDay;
-		if (CubemapTemp)
-		{
-			SkyLight->Cubemap = CubemapTemp;
-		}
-	}
-
-	if (PostProcessComp && LUT)
-	{
-		PostProcessComp->Settings.ColorGradingLUT = LUT;
-	}
-
-	if (VolumetricCloud && CloudMaterial)
-	{
-		VolumetricCloud->SetMaterial(CloudMaterial);
-	}
-
-	if (SkySphere && SkySphereMesh)
-	{
-		SkySphere->SetStaticMesh(SkySphereMesh);
-	}
-	if (SkySphere && SkyMaterial)
-	{
-		SkySphere->SetMaterial(0, SkyMaterial);
-	}
-
-	// Ensure Niagara components don't crash if system is null
-	if (RainFX && NS_RainFall)
-	{
-		RainFX->SetAsset(NS_RainFall);
-	}
-	if (SnowFX && NS_SnowFall)
-	{
-		SnowFX->SetAsset(NS_SnowFall);
-	}
-
-	// Audio assets left null by default -> asignar en editor
-}
-
-// BeginPlay
-void AWeatherSystemMaster::BeginPlay()
+void AProWeatherMaster::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Timers: solo inicializamos si tiene sentido; el usuario puede ajustar tiempo en editor
-	if (WeatherRandomTime > 0.0f)
-	{
-		// usamos WeatherRandomTime como intervalo; no asumimos loop: usa WeatherRandomTimeLoop si se desea
-		GetWorldTimerManager().SetTimer(RandomWeatherTimerHandle, this, &AWeatherSystemMaster::WeatherRandomFunc, WeatherRandomTime, WeatherRandomTimeLoop);
+	// BIND TIMELINES FIRST
+	UpdateSunFloat.BindDynamic(this, &AProWeatherMaster::UpdateSunTimeLine);
+	if (SunAngleCurve) { SunTimeLine->AddInterpFloat(SunAngleCurve, UpdateSunFloat); }
+
+	UpdateIsNightFloat.BindDynamic(this, &AProWeatherMaster::UpdateIsNightTimeLine);
+	if (IsNightCurve) { IsNightTimeLine->AddInterpFloat(IsNightCurve, UpdateIsNightFloat); }
+
+	UpdateSnowOrRainFallingFloat.BindDynamic(this, &AProWeatherMaster::UpdateSnowOrRainFallingTimeLine);
+	if (SnowOrRainFallingCurve) { SnowOrRainFallingTimeLine->AddInterpFloat(SnowOrRainFallingCurve, UpdateSnowOrRainFallingFloat); }
+
+	UpdateRainFallingFloat.BindDynamic(this, &AProWeatherMaster::UpdateRainFallingTimeLine);
+	if (RainFallingCurve) { RainFallingTimeLine->AddInterpFloat(RainFallingCurve, UpdateRainFallingFloat); }
+
+	UpdateSnowFallingFloat.BindDynamic(this, &AProWeatherMaster::UpdateSnowFallingTimeLine);
+	if (SnowFallingCurve) { SnowFallingTimeLine->AddInterpFloat(SnowFallingCurve, UpdateSnowFallingFloat); }
+
+	// SKY TIME MODE
+	switch (SkyTimeMode) {
+	case ESkyTimeMode::Dynamic:
+		SunTimeLine->Play();
+		break;
+
+	case ESkyTimeMode::Day:
+		UpdateSunTimeLine(233.0f);
+		UpdateIsNightTimeLine(0.0f);
+		break;
+
+	case ESkyTimeMode::Night:
+		UpdateSunTimeLine(100.0f);
+		UpdateIsNightTimeLine(1.0f);
+		break;
 	}
 
-	if (ThunderWaitingTime > 0.0f)
-	{
-		GetWorldTimerManager().SetTimer(ThunderTimerHandle, this, &AWeatherSystemMaster::ThunderAudioPlay, ThunderWaitingTime, true);
+	// WEATHER INIT
+	if (bEnableDynamicWeather) {
+		WeatherRandomFunc();
+
+		GetWorldTimerManager().SetTimer(
+			RandomWeatherTimerHandle,
+			this,
+			&AProWeatherMaster::WeatherRandomFunc,
+			WeatherRandomTime,
+			true
+		);
+	}
+	else {
+		SetWeatherState(CurrentWeatherState);
 	}
 
-	// Iniciar SunTimeLine si existe y tiene curve
-	if (SunTimeLine && SunAngleCurve)
-	{
-		// Bind dinámico: solo si la curva existe
-		UpdateSunFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateSunTimeLine);
-		SunTimeLine->AddInterpFloat(SunAngleCurve, UpdateSunFloat);
-		SunTimeLine->PlayFromStart();
-	}
-
-	// IsNight timeline
-	if (IsNightTimeLine && IsNightCurve)
-	{
-		UpdateIsNightFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateIsNightTimeLine);
-		IsNightTimeLine->AddInterpFloat(IsNightCurve, UpdateIsNightFloat);
-	}
-
-	// Otros timelines: bind solo si curves existen
-	if (SnowOrRainFallingTimeLine && SnowOrRainFallingCurve)
-	{
-		UpdateSnowOrRainFallingFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateSnowOrRainFallingTimeLine);
-		SnowOrRainFallingTimeLine->AddInterpFloat(SnowOrRainFallingCurve, UpdateSnowOrRainFallingFloat);
-	}
-
-	if (RainFallingTimeLine && RainFallingCurve)
-	{
-		UpdateRainFallingFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateRainFallingTimeLine);
-		RainFallingTimeLine->AddInterpFloat(RainFallingCurve, UpdateRainFallingFloat);
-	}
-
-	if (SnowFallingTimeLine && SnowFallingCurve)
-	{
-		UpdateSnowFallingFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateSnowFallingTimeLine);
-		SnowFallingTimeLine->AddInterpFloat(SnowFallingCurve, UpdateSnowFallingFloat);
-	}
-
-	if (GetWetTimeLine && GetWetCurve)
-	{
-		UpdateGetWetFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateGetWetTimeLine);
-		GetWetTimeLine->AddInterpFloat(GetWetCurve, UpdateGetWetFloat);
-	}
-
-	if (FrozenTimeLine && FrozenCurve)
-	{
-		UpdateFrozenFloat.BindDynamic(this, &AWeatherSystemMaster::UpdateFrozenTimeLine);
-		FrozenTimeLine->AddInterpFloat(FrozenCurve, UpdateFrozenFloat);
-	}
-
-	// Seguridad: desactivar audio que pueda quedar en reproducción por accidente
-	if (RainAudio) RainAudio->Stop();
-	if (SnowAudio) SnowAudio->Stop();
-	if (ThunderAudio) ThunderAudio->Stop();
-	if (WindAudio) WindAudio->Stop();
-	if (BirdsAudio) BirdsAudio->Stop();
-	if (CicadaAudio) CicadaAudio->Stop();
+	// THUNDER TIMER
+	GetWorldTimerManager().SetTimer(
+		ThunderTimerHandle,
+		this,
+		&AProWeatherMaster::ThunderAudioPlay,
+		ThunderWaitingTime,
+		true
+	);
 }
 
-// Tick
-void AWeatherSystemMaster::Tick(float DeltaTime)
+void AProWeatherMaster::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Comportamiento básico: si hay precipitación, seguir al jugador para FX
-	if ((bSnowIsComing || bRainIsComing))
+	// LLAMAR EFECTOS
+	if (!bSnowIsComing && !bRainIsComing) { return; }
+
+	// ACTUALIZAR FX CADA 0.2S (5 VECES POR SEGUNDO)
+	FXUpdateTimer += DeltaTime;
+	if (FXUpdateTimer >= 0.2f) {
+		FXUpdateTimer = 0.0f;
+		GetPlayerLocation();
+	}
+}
+
+void AProWeatherMaster::WeatherRandomFunc()
+{
+	if (!bEnableDynamicWeather) { return; }
+
+	const float Roll = FMath::FRand();
+
+	if (Roll < SnowProbability) {
+		SetWeatherState(EWeatherState::Snow);
+	}
+	else if (Roll < SnowProbability + RainProbability) {
+		SetWeatherState(EWeatherState::Rain);
+	}
+	else {
+		SetWeatherState(EWeatherState::Sunny);
+	}
+}
+
+void AProWeatherMaster::SetWeatherState(EWeatherState NewState)
+{
+	const bool bSameState = (CurrentWeatherState == NewState);
+	CurrentWeatherState = NewState;
+
+	// RESET BASE
+	bSnowIsComing = false;
+	bRainIsComing = false;
+
+	if (!SnowOrRainFallingTimeLine) { return; }
+
+	if (RainFallingTimeLine) { RainFallingTimeLine->Reverse(); }
+	if (SnowFallingTimeLine) { SnowFallingTimeLine->Reverse(); }
+
+	DirectionalLight->SetEnableLightShaftBloom(true);
+	DirectionalLight->SetEnableLightShaftOcclusion(true);
+
+	// SELECCION DE ESTADO
+	switch (NewState)
 	{
-		// GetPlayerLocation implementada en .h; comprobamos seguridad
-		if (UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
-		{
-			GetPlayerLocation();
+	case EWeatherState::Snow:
+		bSnowIsComing = true;
+		SnowOrRainFallingTimeLine->PlayFromStart();
+		if (SnowFallingTimeLine) { SnowFallingTimeLine->PlayFromStart(); }
+		break;
+	case EWeatherState::Rain:
+		bRainIsComing = true;
+		SnowOrRainFallingTimeLine->PlayFromStart();
+		if (RainFallingTimeLine) { RainFallingTimeLine->PlayFromStart(); }
+		break;
+	case EWeatherState::Sunny:
+	default:
+		break;
+	}
+
+	// MODIFICAR VALORES DE LA LUZ DIRECCIONAL
+	if (bSnowIsComing || bRainIsComing) {
+		DirectionalLight->SetEnableLightShaftBloom(false);
+		DirectionalLight->SetEnableLightShaftOcclusion(false);
+	}
+}
+
+// FUNCIÓN DE LA NOCHE
+void AProWeatherMaster::UpdateIsNightTimeLine(float IsNightOutput)
+{
+	const bool bNowNight = (IsNightOutput >= 0.5f);
+	bIsNight = bNowNight;
+
+	// MODIFICACIÓN DE COMPONENTES
+	if (SkyLight) {
+		SkyLight->SetIntensity(
+			FMath::Lerp(SkyLightIntensityDay, SkyLightIntensityNight, IsNightOutput)
+		);
+	}
+
+	if (DirectionalLight) {
+		DirectionalLight->SetIntensity(
+			FMath::Lerp(SunIntensityDay, SunIntensityNight, IsNightOutput)
+		);
+	}
+
+	if (MPC) {
+		UKismetMaterialLibrary::SetVectorParameterValue(
+			this, MPC, TEXT("SnowColor"),
+			FMath::Lerp(SnowColorDay, SnowColorNight, IsNightOutput)
+		);
+
+		UKismetMaterialLibrary::SetVectorParameterValue(
+			this, MPC, TEXT("RainColor"),
+			FMath::Lerp(RainColorDay, RainColorNight, IsNightOutput)
+		);
+	}
+
+	const bool bBadWeather = (bSnowIsComing || bRainIsComing);
+
+	// CAMBIAR PARAMETROS DE CIELO
+	if (MPC) {
+		const float StarsValue = bBadWeather
+			? 0.0f
+			: FMath::Lerp(0.0f, 3.0f, IsNightOutput);
+
+		UKismetMaterialLibrary::SetScalarParameterValue(
+			this, MPC, TEXT("StarsMask"), StarsValue
+		);
+
+		const float CloudValue = bBadWeather
+			? 0.5f
+			: FMath::Lerp(0.5f, 1.0f, IsNightOutput);
+
+		UKismetMaterialLibrary::SetScalarParameterValue(
+			this, MPC, TEXT("CloudDisappear"), CloudValue
+		);
+	}
+
+	// DESACTIVAR AUDIOS DE FAUNA
+	if (BirdsAudio) {
+		BirdsAudio->SetVolumeMultiplier(
+			(bBadWeather || bNowNight) ? 0.0f : CachedBirdsDayVolume
+		);
+	}
+
+	if (CicadaAudio) {
+		CicadaAudio->SetVolumeMultiplier(
+			(bBadWeather || bNowNight) ? 0.0f : CachedCicadaDayVolume
+		);
+	}
+}
+
+// FUNCIÓN DE ROTACIÓN DE LA LUZ DIRECCIONAL
+void AProWeatherMaster::UpdateSunTimeLine(float SunOutput)
+{
+	if (!DirectionalLight) { return; }
+
+	switch (SkyTimeMode) {
+	case ESkyTimeMode::Day:
+	{
+		// SOL FIJO DE DÍA
+		DirectionalLight->SetRelativeRotation(FRotator(233.0f, 0.0f, 0.0f));
+
+		bIsNight = false;
+		IsNightTimeLine->Reverse();
+		break;
+	}
+
+	case ESkyTimeMode::Night:
+	{
+		// SOL FIJO DE NOCHE
+		DirectionalLight->SetRelativeRotation(FRotator(100.0f, 0.0f, 0.0f));
+
+		bIsNight = true;
+		IsNightTimeLine->Play();
+		break;
+	}
+
+	case ESkyTimeMode::Dynamic:
+	default:
+	{
+		// ROTACION DINÁMICA DEL SOL
+		DirectionalLight->SetRelativeRotation(FRotator(SunOutput, 0.0f, 0.0f));
+
+		// LOOP SEGURO DEL TIMELINE
+		if (SunOutput >= 360.0f) { SunTimeLine->PlayFromStart(); }
+
+		// RANGO NOCTURNO
+		const bool bShouldBeNight = (SunOutput >= 2.5f && SunOutput <= 167.5f);
+
+		if (bShouldBeNight && !bIsNight) {
+			bIsNight = true;
+			IsNightTimeLine->Play();
 		}
-	}
-
-	// TODO: actualizaciones periódicas (timelines, efectos) las iremos rellenando aquí
-}
-
-// WeatherRandomFunc: placeholder seguro
-void AWeatherSystemMaster::WeatherRandomFunc()
-{
-	// Implementación detallada posterior.
-	// Por ahora, función segura que no hace nada si no hay condiciones.
-	// Puedes copiar la lógica que tenías antes cuando quieras activarla.
-}
-
-// GetPlayerLocation: mueve los FX al jugador (implementación segura)
-void AWeatherSystemMaster::GetPlayerLocation()
-{
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
-
-	FVector PlayerLocation = PlayerPawn->GetActorLocation() + FVector(0.0f, 0.0f, 500.0f);
-
-	if (SnowFX) SnowFX->SetWorldLocation(PlayerLocation);
-	if (RainFX) RainFX->SetWorldLocation(PlayerLocation);
-}
-
-// ThunderAudioPlay: placeholder seguro
-void AWeatherSystemMaster::ThunderAudioPlay()
-{
-	// Reproduce si está lloviendo (ejemplo)
-	if (bRainIsComing)
-	{
-		if (ThunderAudio && !ThunderAudio->IsPlaying())
-		{
-			ThunderAudio->Play();
-			float Volume = FMath::FRandRange(ThunderMinVolume, ThunderMaxVolume);
-			ThunderAudio->SetVolumeMultiplier(Volume);
+		else if (!bShouldBeNight && bIsNight) {
+			bIsNight = false;
+			IsNightTimeLine->Reverse();
 		}
+		break;
 	}
-	else
-	{
-		if (ThunderAudio && ThunderAudio->IsPlaying())
-		{
-			ThunderAudio->Stop();
-		}
 	}
 }
 
-// Timeline callbacks: implementaciones mínimas (seguros)
-void AWeatherSystemMaster::UpdateIsNightTimeLine(float IsNightOutput)
+// OBTENER LOCALIZACIÓN DEL JUGADOR
+void AProWeatherMaster::GetPlayerLocation()
 {
-	// Ajuste de intensity de Skylight (seguro: comprueba existencia)
-	if (SkyLight)
-	{
-		SkyLight->SetIntensity(FMath::Lerp(SkyLightIntensityOfDay, SkyLightIntensityOfNight, IsNightOutput));
-	}
-	// Más ajustes se añadirán aquí (MPC, audios, etc.)
-}
+	APawn* DefaultPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!DefaultPawn) { return; }
 
-void AWeatherSystemMaster::UpdateSunTimeLine(float SunOutput)
-{
-	// Ajusta rotación del sol de forma segura
-	if (DirectionalLight)
-	{
-		FRotator NewRot = FRotator(SunOutput, 0.0f, 0.0f);
-		DirectionalLight->SetRelativeRotation(NewRot);
-	}
-}
+	const FVector PlayerLocation = DefaultPawn->GetActorLocation() + FVector(0.f, 0.f, FXHeightOffset);
 
-void AWeatherSystemMaster::UpdateSnowOrRainFallingTimeLine(float SnowOrRainFallingOutput)
-{
-	// Ejemplo: variar intensidad de luz y fog de forma segura
-	if (DirectionalLight)
-	{
-		float NewIntensity = FMath::Lerp(SunIntensityOfSunny, SunIntensityOfRainOrSnow, SnowOrRainFallingOutput);
-		DirectionalLight->SetIntensity(NewIntensity);
-	}
-	if (ExponentialHeightFog)
-	{
-		float NewFog = FMath::Lerp(FogDensityOfSunny, FogDensityOfRainOrSnow, SnowOrRainFallingOutput);
-		ExponentialHeightFog->SetFogDensity(NewFog);
-	}
-}
+	// OPTIMIZACIÓN POR MOVIMIENTO
+	if (FVector::DistSquared(LastPlayerLocation, PlayerLocation) < 10000.f) { return; }
+	LastPlayerLocation = PlayerLocation;
 
-void AWeatherSystemMaster::UpdateGetWetTimeLine(float GetWetOutput)
-{
-	// Placeholder: manipular MPC / materiales más tarde
-}
+	// DETECTAR TECHO
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(DefaultPawn);
 
-void AWeatherSystemMaster::UpdateFrozenTimeLine(float FrozenOutput)
-{
-	// Placeholder: manipular MPC / congelación más tarde
-}
+	const bool bUnderRoof = GetWorld()->LineTraceSingleByChannel(
+		Hit,
+		DefaultPawn->GetActorLocation(),
+		DefaultPawn->GetActorLocation() + FVector(0.f, 0.f, 2000.f),
+		ECC_Visibility,
+		Params
+	);
 
-void AWeatherSystemMaster::UpdateRainFallingTimeLine(float RainFallingOutput)
-{
-	// Ejemplo: variar spawnrate de niagara si está asignado (seguro)
-	if (RainFX)
-	{
-		// Se asume que el sistema tiene parámetros llamados "SpawnRate" etc.
-		RainFX->SetFloatParameter(FName(TEXT("SpawnRate")), FMath::Lerp(0.0f, MaxRainFalling, RainFallingOutput));
+	// ACTIVAR / DESACTIVAR FX
+	if (bUnderRoof) {
+		if (RainFX) RainFX->Deactivate();
+		if (SnowFX) SnowFX->Deactivate();
+
+		// ATENUAR AUDIO BAJO TECHO
+		if (RainAudio) { RainAudio->SetVolumeMultiplier(-1.0f); }
+		if (SnowAudio) { SnowAudio->SetVolumeMultiplier(-1.0f); }
+		if (ThunderAudio) { ThunderAudio->SetVolumeMultiplier(-0.75f); }
+
+		return;
 	}
-	if (RainAudio)
-	{
-		RainAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, RainFallingOutput));
+
+	// RESTAURAR AUDIO AL AIRE LIBRE
+	if (RainAudio) { RainAudio->SetVolumeMultiplier(1.0f); }
+	if (ThunderAudio) { ThunderAudio->SetVolumeMultiplier(1.0f); }
+
+	// POSICIONAR FX
+	if (RainFX) {
+		RainFX->SetWorldLocation(PlayerLocation);
+		RainFX->Activate();
+	}
+
+	if (SnowFX) {
+		SnowFX->SetWorldLocation(PlayerLocation);
+		SnowFX->Activate();
 	}
 }
 
-void AWeatherSystemMaster::UpdateSnowFallingTimeLine(float SnowFallingOutput)
+// DECIDIR SI PUEDE SONAR UN TRUENO
+void AProWeatherMaster::ThunderAudioPlay()
 {
-	if (SnowFX)
-	{
-		SnowFX->SetFloatParameter(FName(TEXT("SnowNumber")), FMath::Lerp(0.0f, MaxSnowFalling, SnowFallingOutput));
+	// SI AMBOS COMPONENTES EXISTEN
+	if (!ThunderAudio || !ThunderSound) { return; }
+
+	// SOLO REPRODUCE SI ESTA LLOVIENDO Y EVITA SONAR CUANDO NO
+	if (!bRainIsComing) {
+		if (ThunderAudio->IsPlaying()) { ThunderAudio->Stop(); }
+		GetWorldTimerManager().ClearTimer(ThunderTimerHandle);
+		return;
 	}
-	if (SnowAudio)
-	{
-		SnowAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, SnowFallingOutput));
+
+	// EVITA SOLAPAMIENTO DE TRUENOS
+	if (ThunderAudio->IsPlaying()) { return; }
+
+	// VARIAR SONIDO DE CADA TRUENO
+	const float RandomVolume = FMath::RandRange(ThunderMinVolume, ThunderMaxVolume);
+	ThunderAudio->SetVolumeMultiplier(RandomVolume);
+
+	// SALIDA DE SONIDOS
+	ThunderAudio->SetSound(ThunderSound);
+	ThunderAudio->Play();
+
+	// PROGRAMAR SIGUIENTE TRUENO
+	ScheduleNextThunder();
+}
+
+// PROGRAMACION DEL SIGUIENTE TRUENO
+void AProWeatherMaster::ScheduleNextThunder()
+{
+	// SI SIGUE LLOVIENDO
+	if (!bRainIsComing) { return; }
+
+	// PREPARA EL SIGUIENTE TRUENO EN UN RANGO DE TIEMPO
+	const float NextThunderTime = FMath::RandRange(ThunderWaitingTime * 0.5f, ThunderWaitingTime * 1.5f);
+
+	// CREAR TIMER NO REPETITIVO
+	GetWorldTimerManager().SetTimer(
+		ThunderTimerHandle,
+		this,
+		&AProWeatherMaster::ThunderAudioPlay,
+		NextThunderTime,
+		false
+	);
+}
+
+// PREPARA LOS COMPONENTES PARA LA LLUVIA O NIEVE
+void AProWeatherMaster::UpdateSnowOrRainFallingTimeLine(float SnowOrRainFallingOutput)
+{
+	// EVITA CRASHES SI ALGUNO NO EXISTE
+	if (!DirectionalLight || !ExponentialHeightFog || !SkyAtmosphere) { return; }
+
+	// PLAY WIND AUDIO
+	if (WindAudio) { WindAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, CachedWindVolume, SnowOrRainFallingOutput)); }
+
+	// MODIFICAR COMPONENTES
+	DirectionalLight->SetIntensity(FMath::Lerp(SunIntensitySunny, SunIntensityRainOrSnow, SnowOrRainFallingOutput));
+	DirectionalLight->SetTemperature(FMath::Lerp(SunTemperatureDay, SunTemperatureRainOrSnow, SnowOrRainFallingOutput));
+
+	ExponentialHeightFog->SetFogDensity(FMath::Lerp(FogDensitySunny, FogDensityRainOrSnow, SnowOrRainFallingOutput));
+	ExponentialHeightFog->SetFogHeightFalloff(FMath::Lerp(FogHeightFalloffSunny, FogHeightFalloffRainOrSnow, SnowOrRainFallingOutput));
+	ExponentialHeightFog->SetStartDistance(FMath::Lerp(DistanceDay, DistanceRainOrSnow, SnowOrRainFallingOutput));
+
+	SkyAtmosphere->SetSkyLuminanceFactor(FMath::Lerp(SnowColorDay, DarkClouds, SnowOrRainFallingOutput));
+
+	// MODIFICAR LAS NUBES Y DESACTIVAR ESTRELLAS
+	if (MPC) {
+		UKismetMaterialLibrary::SetVectorParameterValue(
+			this, MPC, TEXT("CloudColor"),
+			FMath::Lerp(SnowColorDay, DarkClouds, SnowOrRainFallingOutput)
+		);
+		UKismetMaterialLibrary::SetScalarParameterValue(
+			this, MPC, TEXT("StarsMask"), 0.0f
+		);
 	}
+
+	// AUDIO AMBIENTE DIURNO
+	if (!bIsNight) {
+		if (BirdsAudio) { BirdsAudio->SetVolumeMultiplier(FMath::Lerp(CachedBirdsVolume, 0.0f, SnowOrRainFallingOutput)); }
+		if (CicadaAudio) { CicadaAudio->SetVolumeMultiplier(FMath::Lerp(CachedCicadaVolume, 0.0f, SnowOrRainFallingOutput)); }
+	}
+}
+
+// TIMELINE PARA LA LLUVIA
+void AProWeatherMaster::UpdateRainFallingTimeLine(float RainFallingOutput)
+{
+	// GENERAR EFECTOS
+	if (RainFX) {
+		RainFX->SetFloatParameter(TEXT("SpawnRate"), FMath::Lerp(0.0f, MaxRainFalling, RainFallingOutput));
+		RainFX->SetFloatParameter(TEXT("SpawnRate_02"), FMath::Lerp(0.0f, MaxRainFalling * 0.01f, RainFallingOutput));
+		RainFX->SetFloatParameter(TEXT("SpawnRate_Fog"), FMath::Lerp(0.0f, MaxRainFogFalling, RainFallingOutput));
+	}
+
+	// REPRODUCIR AUDIO
+	if (RainAudio) { RainAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, RainFallingOutput)); }
+}
+
+// TIMELINE PARA LA NIEVE
+void AProWeatherMaster::UpdateSnowFallingTimeLine(float SnowFallingOutput)
+{
+	// GENERAR EFECTO
+	if (SnowFX) {
+		SnowFX->SetFloatParameter(
+			TEXT("SnowNumber"),
+			FMath::Lerp(0.0f, MaxSnowFalling, SnowFallingOutput)
+		);
+	}
+
+	// REPRODUCIR AUDIO
+	if (SnowAudio) { SnowAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, SnowFallingOutput)); }
+}
+
+/* SETTINGS ASIGNADOS
+void AProWeatherMaster::SetupDirectionalLightDefaults()
+{
+	Settings.BloomIntensity = BloomIntensity;
+	Settings.Exposure = Exposure;
+	Settings.Vignette = VignetteSize;
+}
+
+void AProWeatherMaster::ApplySunSettings(float DayNightAlpha, float WeatherAlpha)
+{
+	float DayNightIntensity = FMath::Lerp(
+		SunIntensityNight,
+		SunIntensityDay,
+		DayNightAlpha
+	);
+
+	float FinalIntensity = FMath::Lerp(
+		DayNightIntensity,
+		SunIntensityRainOrSnow,
+		WeatherAlpha
+	);
+
+	DirectionalLight->SetIntensity(FinalIntensity);
+}
+
+void AProWeatherMaster::SetupSkyLightDefaults()
+{
+	Settings.BloomIntensity = BloomIntensity;
+	Settings.Exposure = Exposure;
+	Settings.Vignette = VignetteSize;
+}
+
+void AProWeatherMaster::SetupSkyAtmosphereDefaults()
+{
+	Settings.BloomIntensity = BloomIntensity;
+	Settings.Exposure = Exposure;
+	Settings.Vignette = VignetteSize;
+}
+
+void AProWeatherMaster::SetupExponentialHeightFogDefaults()
+{
+	Settings.BloomIntensity = BloomIntensity;
+	Settings.Exposure = Exposure;
+	Settings.Vignette = VignetteSize;
+}
+
+void AProWeatherMaster::SetupPostProcessDefaults()
+{
+	Settings.BloomIntensity = BloomIntensity;
+	Settings.Exposure = Exposure;
+	Settings.Vignette = VignetteSize;
+}
+*/
+
+void AProWeatherMaster::SetupDefaults()
+{
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+	AProWeatherMaster::SetRootComponent(RootComponent);
+
+	DirectionalLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("DirectionalLight"));
+	DirectionalLight->SetupAttachment(RootComponent);
+	DirectionalLight->SetMobility(EComponentMobility::Movable);
+	DirectionalLight->SetRelativeRotation_Direct(FRotator(233.0f, 0.0f, 0.0f));
+	DirectionalLight->bUseTemperature = true;
+	DirectionalLight->Temperature = 4500.0f;
+	DirectionalLight->bEnableLightShaftOcclusion = true;
+	DirectionalLight->OcclusionMaskDarkness = 1.0f;
+	DirectionalLight->bEnableLightShaftBloom = true;
+	DirectionalLight->BloomScale = 0.5f;
+	DirectionalLight->BloomMaxBrightness = 5.0f;
+	DirectionalLight->bUsedAsAtmosphereSunLight = true;
+	DirectionalLight->DynamicShadowDistanceMovableLight = 200000.0f;
+	DirectionalLight->DynamicShadowCascades = 5.0f;
+	DirectionalLight->CascadeDistributionExponent = 4.0f;
+	DirectionalLight->CascadeTransitionFraction = 0.3f;
+
+	SkyLight = CreateDefaultSubobject<USkyLightComponent>(TEXT("SkyLight"));
+	SkyLight->SetupAttachment(RootComponent);
+	SkyLight->SetMobility(EComponentMobility::Movable);
+	SkyLight->Intensity = 1.2f;
+	SkyLight->bRealTimeCapture = true;
+	SkyLight->bCloudAmbientOcclusion = true;
+
+	ExponentialHeightFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("ExponentialHeightFog"));
+	ExponentialHeightFog->SetupAttachment(RootComponent);
+	ExponentialHeightFog->SetMobility(EComponentMobility::Movable);
+	ExponentialHeightFog->SetRelativeLocation(FVector(0.0f, 0.0f, 5000.0f));
+
+	PostProcessComp = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcess"));
+	PostProcessComp->SetupAttachment(RootComponent);
+	PostProcessComp->SetMobility(EComponentMobility::Movable);
+	PostProcessComp->bUnbound = true;
+	PostProcessComp->Settings.bOverride_BloomIntensity = true;
+	PostProcessComp->Settings.BloomIntensity = 2.0f;
+	PostProcessComp->Settings.bOverride_AutoExposureBias = true;
+	PostProcessComp->Settings.AutoExposureBias = 0.0f;
+	PostProcessComp->Settings.bOverride_VignetteIntensity = true;
+	PostProcessComp->Settings.VignetteIntensity = 0.2f;
+
+	SkyAtmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("SkyAtmosphere"));
+	SkyAtmosphere->SetupAttachment(RootComponent);
+	SkyAtmosphere->SetMobility(EComponentMobility::Movable);
+	SkyAtmosphere->SetSkyLuminanceFactor(FVector(0.5f, 0.625f, 1.0f));
+
+	VolumetricCloud = CreateDefaultSubobject<UVolumetricCloudComponent>(TEXT("VolumetricCloud"));
+	VolumetricCloud->SetupAttachment(RootComponent);
+	VolumetricCloud->SetMobility(EComponentMobility::Movable);
+	VolumetricCloud->LayerBottomAltitude = 20.0f;
+	CloudMaterial = LoadObject<UMaterialInstance>(NULL, TEXT("MaterialInstanceConstant'/ProWeather/Instancials/Sky/MI_SimpleVolumetricCloud_1.MI_SimpleVolumetricCloud_1'"));
+	VolumetricCloud->SetMaterial(CloudMaterial);
+	VolumetricCloud->bUsePerSampleAtmosphericLightTransmittance = true;
+
+	SkySphere = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SkySphere"));
+	SkySphere->SetupAttachment(RootComponent);
+	SkySphereMesh = LoadObject<UStaticMesh>(NULL, TEXT("StaticMesh'/ProWeather/Meshes/Sky/SM_SkySphere.SM_SkySphere'"));
+	SkySphere->SetStaticMesh(SkySphereMesh);
+	SkySphere->SetRelativeScale3D(FVector(5000.0f));
+	SkyMaterial = LoadObject<UMaterial>(NULL, TEXT("MaterialInstanceConstant'/ProWeather/Instancials/Sky/MI_Sky_1.MI_Sky_1'"));
+	SkySphere->SetMaterial(0, SkyMaterial);
+	SkySphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SkySphere->CastShadow = false;
+
+	RainFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("RainFX"));
+	RainFX->SetupAttachment(RootComponent);
+	RainFX->SetVisibility(true);
+	NS_RainFall = LoadObject<UNiagaraSystem>(NULL, TEXT("NiagaraSystem'/ProWeather/Particles/NS_RainFall.NS_RainFall'"));
+	RainFX->SetAsset(NS_RainFall);
+
+	RainAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("RainAudio"));
+	RainAudio->SetupAttachment(RootComponent);
+	RainSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Rain.Cue_Rain'"));
+	RainAudio->SetSound(RainSound);
+	RainAudio->VolumeMultiplier = 0.0f;
+
+	ThunderAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("ThunderAudio"));
+	ThunderAudio->SetupAttachment(RootComponent);
+	ThunderSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Thunder.Cue_Thunder'"));
+	ThunderAudio->SetSound(ThunderSound);
+	ThunderAudio->VolumeMultiplier = 0.0f;
+
+	SnowFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("SnowFX"));
+	SnowFX->SetupAttachment(RootComponent);
+	SnowFX->SetVisibility(true);
+	NS_SnowFall = LoadObject<UNiagaraSystem>(NULL, TEXT("NiagaraSystem'/ProWeather/Particles/NS_SnowFall.NS_SnowFall'"));
+	SnowFX->SetAsset(NS_SnowFall);
+
+	SnowAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("SnowAudio"));
+	SnowAudio->SetupAttachment(RootComponent);
+	SnowSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Snow.Cue_Snow'"));
+	SnowAudio->SetSound(SnowSound);
+	SnowAudio->VolumeMultiplier = 0.0f;
+
+	WindAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("WindAudio"));
+	WindAudio->SetupAttachment(RootComponent);
+	WindSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Wind.Cue_Wind'"));
+	WindAudio->SetSound(WindSound);
+	WindAudio->VolumeMultiplier = 0.0f;
+
+	BirdsAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("BirdsAudio"));
+	BirdsAudio->SetupAttachment(RootComponent);
+	BirdsSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Birds.Cue_Birds'"));
+	BirdsAudio->SetSound(BirdsSound);
+
+	CicadaAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("CicadaAudio"));
+	CicadaAudio->SetupAttachment(RootComponent);
+	CicadaSound = LoadObject<USoundCue>(NULL, TEXT("SoundCue'/ProWeather/Music/Cue/Cue_Cicada_Loop.Cue_Cicada_Loop'"));
+	CicadaAudio->SetSound(CicadaSound);
+
+	IsNightTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("IsNightTimeLine"));
+	IsNightCurve = LoadObject<UCurveFloat>(NULL, TEXT("CurveFloat'/ProWeather/Curves/IsNightLerp.IsNightLerp'"));
+
+	SunTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SunTimeLine"));
+	SunAngleCurve = LoadObject<UCurveFloat>(NULL, TEXT("CurveFloat'/ProWeather/Curves/SunAngle.SunAngle'"));
+
+	SnowOrRainFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SnowOrRainFallingTimeLine"));
+	SnowOrRainFallingCurve = LoadObject<UCurveFloat>(NULL, TEXT("CurveFloat'/ProWeather/Curves/SnowOrRainFalling.SnowOrRainFalling'"));
+
+	RainFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("RainFallingTimeLine"));
+	RainFallingCurve = LoadObject<UCurveFloat>(NULL, TEXT("CurveFloat'/ProWeather/Curves/RainFalling.RainFalling'"));
+
+	SnowFallingTimeLine = CreateDefaultSubobject<UTimelineComponent>(TEXT("SnowFallingTimeLine"));
+	SnowFallingCurve = LoadObject<UCurveFloat>(NULL, TEXT("CurveFloat'/ProWeather/Curves/SnowFalling.SnowFalling'"));
+
+	MPC = LoadObject<UMaterialParameterCollection>(NULL, TEXT("MaterialParameterCollection'/ProWeather/MPC/MPC_Weather.MPC_Weather'"));
+
+	SnowColorDay = FLinearColor(0.5f, 0.65f, 1.0f, 1.0f);
+	SnowColorNight = FLinearColor(0.25f, 0.325f, 0.5f, 1.0f);
+	DarkClouds = FLinearColor(0.035f, 0.0395f, 0.05f, 1.0f);
+	RainColorDay = SnowColorDay;
+	RainColorNight = SnowColorNight;
+
+	/*
+	SetupPostProcessDefaults();
+	SetupFogDefaults();
+	SetupRainDefaults();
+	SetupSnowDefaults();
+	SetupLightingDefaults();
+	*/
 }

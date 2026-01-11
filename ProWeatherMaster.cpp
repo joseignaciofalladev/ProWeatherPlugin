@@ -5,14 +5,12 @@
 #include "TimerManager.h"
 #include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
 
-AProWeatherMaster::AProWeatherMaster()
-{
+AProWeatherMaster::AProWeatherMaster(){
 	PrimaryActorTick.bCanEverTick = true;
 	SetupDefaults();
 }
 
-void AProWeatherMaster::BeginPlay()
-{
+void AProWeatherMaster::BeginPlay(){
 	Super::BeginPlay();
 
 	// BIND TIMELINES FIRST
@@ -59,23 +57,15 @@ void AProWeatherMaster::BeginPlay()
 			WeatherRandomTime,
 			true
 		);
-	}
-	else {
+	} else {
 		SetWeatherState(CurrentWeatherState);
 	}
 
 	// THUNDER TIMER
-	GetWorldTimerManager().SetTimer(
-		ThunderTimerHandle,
-		this,
-		&AProWeatherMaster::ThunderAudioPlay,
-		ThunderWaitingTime,
-		true
-	);
+	GetWorldTimerManager().SetTimer(ThunderTimerHandle,this,&AProWeatherMaster::ThunderAudioPlay,ThunderWaitingTime,true);
 }
 
-void AProWeatherMaster::Tick(float DeltaTime)
-{
+void AProWeatherMaster::Tick(float DeltaTime){
 	Super::Tick(DeltaTime);
 
 	// LLAMAR EFECTOS
@@ -89,19 +79,16 @@ void AProWeatherMaster::Tick(float DeltaTime)
 	}
 }
 
-void AProWeatherMaster::WeatherRandomFunc()
-{
+void AProWeatherMaster::WeatherRandomFunc(){
 	if (!bEnableDynamicWeather) { return; }
 
 	const float Roll = FMath::FRand();
 
 	if (Roll < SnowProbability) {
 		SetWeatherState(EWeatherState::Snow);
-	}
-	else if (Roll < SnowProbability + RainProbability) {
+	} else if (Roll < SnowProbability + RainProbability) {
 		SetWeatherState(EWeatherState::Rain);
-	}
-	else {
+	} else {
 		SetWeatherState(EWeatherState::Sunny);
 	}
 }
@@ -631,3 +618,4 @@ void AProWeatherMaster::SetupDefaults()
 	SetupLightingDefaults();
 	*/
 }
+

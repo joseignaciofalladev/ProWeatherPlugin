@@ -416,65 +416,9 @@ void AProWeatherMaster::UpdateSnowFallingTimeLine(float SnowFallingOutput)
 	}
 
 	// REPRODUCIR AUDIO
-	if (SnowAudio) { SnowAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, SnowFallingOutput)); }
-}
+	if (SnowAudio) { SnowAudio->SetVolumeMultiplier(FMath::Lerp(0.0f, 1.0f, SnowFallingOutput)); }}
 
-/* SETTINGS ASIGNADOS
-void AProWeatherMaster::SetupDirectionalLightDefaults()
-{
-	Settings.BloomIntensity = BloomIntensity;
-	Settings.Exposure = Exposure;
-	Settings.Vignette = VignetteSize;
-}
-
-void AProWeatherMaster::ApplySunSettings(float DayNightAlpha, float WeatherAlpha)
-{
-	float DayNightIntensity = FMath::Lerp(
-		SunIntensityNight,
-		SunIntensityDay,
-		DayNightAlpha
-	);
-
-	float FinalIntensity = FMath::Lerp(
-		DayNightIntensity,
-		SunIntensityRainOrSnow,
-		WeatherAlpha
-	);
-
-	DirectionalLight->SetIntensity(FinalIntensity);
-}
-
-void AProWeatherMaster::SetupSkyLightDefaults()
-{
-	Settings.BloomIntensity = BloomIntensity;
-	Settings.Exposure = Exposure;
-	Settings.Vignette = VignetteSize;
-}
-
-void AProWeatherMaster::SetupSkyAtmosphereDefaults()
-{
-	Settings.BloomIntensity = BloomIntensity;
-	Settings.Exposure = Exposure;
-	Settings.Vignette = VignetteSize;
-}
-
-void AProWeatherMaster::SetupExponentialHeightFogDefaults()
-{
-	Settings.BloomIntensity = BloomIntensity;
-	Settings.Exposure = Exposure;
-	Settings.Vignette = VignetteSize;
-}
-
-void AProWeatherMaster::SetupPostProcessDefaults()
-{
-	Settings.BloomIntensity = BloomIntensity;
-	Settings.Exposure = Exposure;
-	Settings.Vignette = VignetteSize;
-}
-*/
-
-void AProWeatherMaster::SetupDefaults()
-{
+void AProWeatherMaster::SetupDefaults(){
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
 	AProWeatherMaster::SetRootComponent(RootComponent);
 
@@ -609,13 +553,4 @@ void AProWeatherMaster::SetupDefaults()
 	DarkClouds = FLinearColor(0.035f, 0.0395f, 0.05f, 1.0f);
 	RainColorDay = SnowColorDay;
 	RainColorNight = SnowColorNight;
-
-	/*
-	SetupPostProcessDefaults();
-	SetupFogDefaults();
-	SetupRainDefaults();
-	SetupSnowDefaults();
-	SetupLightingDefaults();
-	*/
 }
-

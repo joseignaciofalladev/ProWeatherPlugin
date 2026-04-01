@@ -202,16 +202,13 @@ void AProWeatherMaster::UpdateIsNightTimeLine(float IsNightOutput)
 }
 
 // FUNCIÓN DE ROTACIÓN DE LA LUZ DIRECCIONAL
-void AProWeatherMaster::UpdateSunTimeLine(float SunOutput)
-{
+void AProWeatherMaster::UpdateSunTimeLine(float SunOutput){
 	if (!DirectionalLight) { return; }
-
 	switch (SkyTimeMode) {
 	case ESkyTimeMode::Day:
 	{
 		// SOL FIJO DE DÍA
 		DirectionalLight->SetRelativeRotation(FRotator(233.0f, 0.0f, 0.0f));
-
 		bIsNight = false;
 		IsNightTimeLine->Reverse();
 		break;
@@ -221,7 +218,6 @@ void AProWeatherMaster::UpdateSunTimeLine(float SunOutput)
 	{
 		// SOL FIJO DE NOCHE
 		DirectionalLight->SetRelativeRotation(FRotator(100.0f, 0.0f, 0.0f));
-
 		bIsNight = true;
 		IsNightTimeLine->Play();
 		break;
@@ -232,29 +228,24 @@ void AProWeatherMaster::UpdateSunTimeLine(float SunOutput)
 	{
 		// ROTACION DINÁMICA DEL SOL
 		DirectionalLight->SetRelativeRotation(FRotator(SunOutput, 0.0f, 0.0f));
-
 		// LOOP SEGURO DEL TIMELINE
 		if (SunOutput >= 360.0f) { SunTimeLine->PlayFromStart(); }
-
 		// RANGO NOCTURNO
 		const bool bShouldBeNight = (SunOutput >= 2.5f && SunOutput <= 167.5f);
 
 		if (bShouldBeNight && !bIsNight) {
 			bIsNight = true;
 			IsNightTimeLine->Play();
-		}
-		else if (!bShouldBeNight && bIsNight) {
+		} else if (!bShouldBeNight && bIsNight) {
 			bIsNight = false;
 			IsNightTimeLine->Reverse();
-		}
-		break;
+		} break;
 	}
 	}
 }
 
 // OBTENER LOCALIZACIÓN DEL JUGADOR
-void AProWeatherMaster::GetPlayerLocation()
-{
+void AProWeatherMaster::GetPlayerLocation(){
 	APawn* DefaultPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 	if (!DefaultPawn) { return; }
 

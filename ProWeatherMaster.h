@@ -31,81 +31,38 @@ public:
 	FTimerHandle ThunderTimerHandle;
 
 	/** Estado general */
-	UPROPERTY(BlueprintReadOnly)
-	bool bSnowIsComing = false;
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bRainIsComing = false;
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bIsNight = false;
+	UPROPERTY(BlueprintReadOnly) bool bSnowIsComing = false;
+	UPROPERTY(BlueprintReadOnly) bool bRainIsComing = false;
+	UPROPERTY(BlueprintReadOnly) bool bIsNight = false;
 
 	/** Config general */
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	float WeatherRandomTime = 60.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	bool AlwaysRain = false;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	bool AlwaysSnow = false;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	bool AlwaysSunny = false;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	bool AlwaysDayTime = false;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Core")
-	bool AlwaysNight = false;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") float WeatherRandomTime = 60.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") bool AlwaysRain = false;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") bool AlwaysSnow = false;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") bool AlwaysSunny = false;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") bool AlwaysDayTime = false;
+	UPROPERTY(EditAnywhere, Category = "Weather | Core") bool AlwaysNight = false;
 
 	/** Colores */
-	UPROPERTY(EditAnywhere, Category = "Weather | Visuals")
-	FLinearColor DarkClouds;
+	UPROPERTY(EditAnywhere, Category = "Weather | Visuals") FLinearColor DarkClouds;
 
 	/** Snow */
-	UPROPERTY(EditAnywhere, Category = "Weather | Snow")
-	float MaxSnowFalling = 20000.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Snow")
-	float SnowBlendMax = 7.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Snow")
-	FLinearColor SnowColorOfDay;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Snow")
-	FLinearColor SnowColorOfNight;
+	UPROPERTY(EditAnywhere, Category = "Weather | Snow") float MaxSnowFalling = 20000.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Snow") float SnowBlendMax = 7.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Snow") FLinearColor SnowColorOfDay;
+	UPROPERTY(EditAnywhere, Category = "Weather | Snow") FLinearColor SnowColorOfNight;
 
 	/** Rain */
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	FLinearColor RainColorOfDay;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	FLinearColor RainColorOfNight;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float MaxRainFalling = 20000.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float MaxRainFogFalling = 100.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float RainDropsBlendMax = 0.1f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float GetWetRoughness = 0.3f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float GetWetSpecular = 2.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float ThunderWaitingTime = 30.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float ThunderMinVolume = 0.5f;
-
-	UPROPERTY(EditAnywhere, Category = "Weather | Rain")
-	float ThunderMaxVolume = 1.5f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") FLinearColor RainColorOfDay;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") FLinearColor RainColorOfNight;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float MaxRainFalling = 20000.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float MaxRainFogFalling = 100.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float RainDropsBlendMax = 0.1f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float GetWetRoughness = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float GetWetSpecular = 2.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float ThunderWaitingTime = 30.0f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float ThunderMinVolume = 0.5f;
+	UPROPERTY(EditAnywhere, Category = "Weather | Rain") float ThunderMaxVolume = 1.5f;
 
 	/** Sun & Light */
 	UPROPERTY(EditAnywhere, Category = "Weather | Sun")

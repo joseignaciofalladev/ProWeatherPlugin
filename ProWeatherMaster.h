@@ -18,9 +18,6 @@
 #include "Materials/MaterialParameterCollection.h"
 #include "ProWeatherMaster.generated.h"
 
-/**
- * PRO Weather Master — versión limpia, modular y sin WaterBase.
- */
 UCLASS()
 class PROWEATHER_API AProWeatherMaster : public AActor
 {
@@ -161,7 +158,6 @@ public:
 	void WeatherRandomFunc();
 	void GetPlayerLocation();
 	void ThunderAudioPlay();
-
 protected:
 	virtual void BeginPlay() override;
 
